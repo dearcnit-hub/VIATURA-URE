@@ -1,0 +1,107 @@
+// 1. COLE SUA URL DO GOOGLE APPS SCRIPT AQUI ABAIXO:
+const URL_DATABASE = "https://script.google.com/macros/s/AKfycbyqt-A3a26K4Ne8M6U8mOZg5gd5jBCA704IjMtZEDMnzpJRfretFdE4vLBTQKDTYsPi/exec";
+
+document.addEventListener('DOMContentLoaded', () => {
+    const hoje = new Date();
+    document.getElementById('filtroMes').value = String(hoje.getMonth() + 1).padStart(2, '0');
+    document.getElementById('filtroAno').value = hoje.getFullYear();
+    if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark-mode');
+    
+    renderizarTabela(); // Carrega os dados da planilha ao abrir
+});
+
+function toggleDarkMode() {
+    document.body.classList.toggle('dark-mode');
+    localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+}
+
+async function adicionarAgendamento() {
+    const btn = document.querySelector('.btn-primary');
+    const destinos = Array.from(document.getElementById('destino').selectedOptions).map(o => o.value);
+    
+    const fields = {
+        dSaida: document.getElementById('dataSaida').value,
+        hSaida: document.getElementById('horaSaida').value,
+        dChegada: document.getElementById('dataChegada').value,
+        hChegada: document.getElementById('horaChegadaTime').value,
+        viatura: document.getElementById('viatura').value,
+        condutor: document.getElementById('condutor').value,
+        passageiro: document.getElementById('passageiro').value,
+        secao: document.getElementById('secao').value,
+        destino: destinos.join(", ")
+    };
+
+    if(!fields.dSaida || !fields.hSaida || !fields.condutor || destinos.length === 0) {
+        return alert("Preencha Saída, Hora, Condutor e Destino.");
+    }
+
+    btn.innerText = "Salvando na Nuvem...";
+    btn.disabled = true;
+
+    try {
+        await fetch(URL_DATABASE, {
+            method: 'POST',
+            body: JSON.stringify(fields)
+        });
+        alert("Agendamento salvo com sucesso para toda a equipe!");
+        limparCampos();
+        renderizarTabela();
+    } catch (error) {
+        alert("Erro ao salvar. Verifique a conexão.");
+    } finally {
+        btn.innerText = "Salvar Agendamento";
+        btn.disabled = false;
+    }
+}
+
+async function renderizarTabela() {
+    const corpo = document.getElementById('corpoTabela');
+    corpo.innerHTML = "<tr><td colspan='11' style='text-align:center; padding:30px;'>🔄 Carregando dados da Planilha Google...</td></tr>";
+
+    try {
+        const response = await fetch(URL_DATABASE);
+        const agendamentos = await response.json();
+        
+        const mesSel = document.getElementById('filtroMes').value;
+        const anoSel = document.getElementById('filtroAno').value;
+        
+        // Filtra os dados que vêm da planilha
+        const filtrados = agendamentos.filter(item => {
+            const dataObjeto = new Date(item.dSaida);
+            const mesItem = String(dataObjeto.getUTCMonth() + 1).padStart(2, '0');
+            const anoItem = String(dataObjeto.getUTCFullYear());
+            return mesItem === mesSel && anoItem === anoSel;
+        });
+
+        document.getElementById('statTotal').innerText = filtrados.length;
+        document.getElementById('statSpin').innerText = filtrados.filter(i => i.viatura === 'SPIN').length;
+        document.getElementById('statOnix').innerText = filtrados.filter(i => i.viatura === 'ONIX').length;
+
+        corpo.innerHTML = filtrados.length ? "" : "<tr><td colspan='11' style='text-align:center; padding:30px; color:#94a3b8;'>Sem registros para este período.</td></tr>";
+
+        filtrados.forEach((item) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><b>${item.dSaida.split('-').reverse().join('/')}</b></td>
+                <td>${item.hSaida}</td>
+                <td>${item.dChegada ? item.dChegada.split('-').reverse().join('/') : '--'}</td>
+                <td>${item.hChegada || '--:--'}</td>
+                <td style="max-width:180px">${item.destino}</td>
+                <td><span class="badge ${item.viatura === 'SPIN' ? 'badge-spin' : 'badge-onix'}">${item.viatura}</span></td>
+                <td><b>${item.condutor}</b></td>
+                <td>${item.passageiro || '---'}</td>
+                <td>${item.secao}</td>
+                <td><span class="status-pill" style="background:#10b98122; color:#10b981">Sincronizado</span></td>
+                <td style="text-align:right">---</td>
+            `;
+            corpo.appendChild(row);
+        });
+    } catch (e) {
+        corpo.innerHTML = "<tr><td colspan='11' style='text-align:center; color:red;'>Erro ao carregar dados. Verifique a URL do Script.</td></tr>";
+    }
+}
+
+function limparCampos() {
+    ['secao', 'passageiro', 'dataSaida', 'horaSaida', 'dataChegada', 'horaChegadaTime'].forEach(id => document.getElementById(id).value = "");
+    document.getElementById('destino').selectedIndex = -1;
+}
